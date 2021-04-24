@@ -1,3 +1,7 @@
+# Program-specific files
+sounds/*
+control.yml
+
 # Byte-compiled / optimized / DLL files
 __pycache__/
 *.py[cod]
