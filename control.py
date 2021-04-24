@@ -5,16 +5,20 @@ import os
 from signal import pause
 import time
 import yaml
+import boto3
+from botocore.exceptions import ClientError
 
+sns = boto3.client('sns')
+sns.set_sms_attributes(attributes = { 'DefaultSMSType': 'Transactional' })
 
 conf = []
+
 
 def main():
 	global conf
 	conf = read_conf()
 	
 	initialize_pins()
-	print("conf:", conf)
 	
 	button_handler(True)
 	while 42:
@@ -78,9 +82,7 @@ def action_handler(actions, is_startup=False):
 	devices = {}
 	for item in conf:
 		devices[item['name']] = item['gpio']
-		
-	print("actions:", actions)
-	print("devices:", devices)
+	
 	for action in actions:
 		if 'delay' in action:
 			time_now = time.time()
@@ -93,17 +95,36 @@ def action_handler(actions, is_startup=False):
 		
 		if 'action' not in action:
 			continue
-		if action['action'] == 'on' and 'device' in action:
-			print("here on")
-			print("action:", action)
-			devices[action['device']].on()
-		elif action['action'] == 'off' and 'device' in action:
-			devices[action['device']].off()
+		if action['action'] == 'led' and 'device' in action and 'value' in action:
+			if action['value'] == 'on':
+				devices[action['device']].on()
+			elif action['value'] == 'off':
+				devices[action['device']].off()
 		elif is_startup:
 			continue
 		elif action['action'] == 'sound' and 'sound' in action:
 			os.system('curl -s http://sounds.mnk:8080/{}'.format(action['sound']))
+		elif action['action'] == 'sns':
+			response = publish_to_sns(action)
 	
+
+def publish_to_sns(action, debug=False):
+	if 'message' not in action or 'topic_arn' not in action:
+		return
+	if type(action['topic_arn']) is not str or type(action['message']) is not str:
+		return
+	
+	response = sns.publish(
+		TopicArn = action['topic_arn'],
+		Message = action['message'],
+		MessageStructure = 'string'
+	)
+	
+	if debug:
+		print("response:", response)
+	if type(response) is dict and 'ResponseMetadata' in response:
+		if response['ResponseMetadata'].get('HTTPStatusCode') == 200:
+			return response.get('MessageId')
 
 
 
