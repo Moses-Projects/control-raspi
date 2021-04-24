@@ -4,67 +4,83 @@ from gpiozero import Button, LED
 import os
 from signal import pause
 import time
-
-led4 = LED(4)
-led14 = LED(14)
+import yaml
 
 
-buttons = {
-	'button': {
-		'gpio': Button(19),
-		'on_actions': [
-			{ 'action': 'on', 'device': led4 },
-			{ 'action': 'sound', 'sound': 'doorbell', 'delay': 3 }
-		],
-		'off_actions': [
-			{ 'action': 'off', 'device': led4 }
-		]
-	},
-	'switch': {
-		'gpio': Button(26),
-		'on_actions': [
-			{ 'action': 'on', 'device': led14 },
-			{ 'action': 'sound', 'sound': 'spark', 'delay': 1 }
-		],
-		'off_actions': [
-			{ 'action': 'off', 'device': led14 }
-		]
-	}
-}
-
+conf = []
 
 def main():
-	global buttons
+	global conf
+	conf = read_conf()
 	
-	for name, button in buttons.items():
-		button['last_status'] = False
-		button['gpio'].when_pressed = button_handler
-		button['gpio'].when_released = button_handler
+	initialize_pins()
+	print("conf:", conf)
 	
 	button_handler(True)
 	while 42:
 		time.sleep(1)
 		button_handler()
 	
+def read_conf():
+	path = '/opt/control/control.yml'
+	if os.path.exists(path):
+		with open(path) as file:
+			data = yaml.load(file, Loader=yaml.FullLoader)
+			if type(data) is not list:
+				print("Config file should be a list.")
+				raise ValueError;
+			if not len(data):
+				print("Config file is empty.")
+				raise ValueError;
+			return data
+	else:
+		print("Config file not found at '/opt/control.yml'.")
+		raise FileNotFoundError;
+	
+
+def initialize_pins():
+	global conf
+	for device in conf:
+		if 'type' not in device or 'pin' not in device:
+			continue
+		
+		if device['type'] == 'led':
+			device['gpio'] = LED(int(device['pin']))
+		if device['type'] == 'button':
+			device['gpio'] = Button(int(device['pin']))
+			device['last_status'] = False
+			device['gpio'].when_pressed = button_handler
+			device['gpio'].when_released = button_handler
+	
 
 def button_handler(is_startup=False):
-	global buttons
-	for name, button in buttons.items():
+	global conf
+	for device in conf:
+		if 'type' not in device or device['type'] != 'button':
+			continue
+		
 		# Pressed
-		if button['gpio'].is_pressed and not button['last_status']:
-			print("press", name)
-			button['last_status'] = True
-			if 'on_actions' in button:
-				action_handler(button['on_actions'], is_startup)
+		if device['gpio'].is_pressed and not device['last_status']:
+			print("press", device['name'])
+			device['last_status'] = True
+			if 'on_actions' in device:
+				action_handler(device['on_actions'], is_startup)
 		# Released
-		elif not button['gpio'].is_pressed and button['last_status']:
-			print("release", name)
-			button['last_status'] = False
-			if 'off_actions' in button:
-				action_handler(button['off_actions'], is_startup)
+		elif not device['gpio'].is_pressed and device['last_status']:
+			print("release", device['name'])
+			device['last_status'] = False
+			if 'off_actions' in device:
+				action_handler(device['off_actions'], is_startup)
 		
 
 def action_handler(actions, is_startup=False):
+	global conf
+	devices = {}
+	for item in conf:
+		devices[item['name']] = item['gpio']
+		
+	print("actions:", actions)
+	print("devices:", devices)
 	for action in actions:
 		if 'delay' in action:
 			time_now = time.time()
@@ -78,9 +94,11 @@ def action_handler(actions, is_startup=False):
 		if 'action' not in action:
 			continue
 		if action['action'] == 'on' and 'device' in action:
-			action['device'].on()
+			print("here on")
+			print("action:", action)
+			devices[action['device']].on()
 		elif action['action'] == 'off' and 'device' in action:
-			action['device'].off()
+			devices[action['device']].off()
 		elif is_startup:
 			continue
 		elif action['action'] == 'sound' and 'sound' in action:
