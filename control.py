@@ -102,8 +102,8 @@ def action_handler(actions, is_startup=False):
 				devices[action['device']].off()
 		elif is_startup:
 			continue
-		elif action['action'] == 'sound' and 'sound' in action:
-			os.system('curl -s http://sounds.mnk:8080/{}'.format(action['sound']))
+		elif action['action'] == 'url' and 'url' in action:
+			os.system('curl -s {}'.format(action['url']))
 		elif action['action'] == 'sns':
 			response = publish_to_sns(action)
 	
