@@ -1,0 +1,68 @@
+---
+- name: redled
+  type: led
+  pin: 4
+- name: buzzer
+  type: haptic_lra
+  pin: i2c
+- name: switch
+  type: button
+  title: Big Mad Scientist Knife Switch
+  pin: 17
+  mqtt_id: homeassistant/switch/knife-switch
+  mqtt_broker: mqtt.mnk
+  mqtt_username: 'some_username'
+  mqtt_password: '***'
+  on_actions:
+  - action: led
+    device: redled
+    value: 'on'
+  - action: sound
+    file: spark.wav
+    delay: 1
+  - action: haptic
+    device: buzzer
+    effect: 52
+    delay: 1
+  - action: mqtt
+    value: 'ON'
+    delay: 5
+  - action: http
+    url: 'http://homeassistant.local:8123/api/services/light/turn_on'
+    bearer_token: '***'
+    post_data:
+      color_temp: 370
+      brightness: 255
+      entity_id:
+      - light.lamp_left
+      - light.lamp_right
+    delay: 5
+  - action: http
+    url: 'http://homeassistant.local:8123/api/services/media_player/turn_on'
+    bearer_token: '***'
+    post_data:
+      entity_id:
+      - media_player.main_monitor
+    delay: 5
+  off_actions:
+  - action: led
+    device: redled
+    value: 'off'
+  - action: mqtt
+    value: 'OFF'
+    delay: 5
+  - action: http
+    url: 'http://homeassistant.local:8123/api/services/light/turn_off'
+    bearer_token: '***'
+    post_data:
+      entity_id:
+      - light.lamp_left
+      - light.lamp_right
+    delay: 5
+  - action: http
+    url: 'http://homeassistant.local:8123/api/services/media_player/turn_off'
+    bearer_token: '***'
+    post_data:
+      entity_id:
+      - media_player.main_monitor
+    delay: 5
