@@ -1,68 +1,58 @@
 ---
-- name: redled
-  type: led
-  pin: 4
-- name: buzzer
-  type: haptic_lra
-  pin: i2c
-- name: switch
-  type: button
-  title: Big Mad Scientist Knife Switch
-  pin: 17
-  mqtt_id: homeassistant/switch/knife-switch
-  mqtt_broker: mqtt.mnk
-  mqtt_username: 'some_username'
-  mqtt_password: '***'
-  on_actions:
-  - action: led
-    device: redled
-    value: 'on'
-  - action: sound
-    file: spark.wav
-    delay: 1
-  - action: haptic
-    device: buzzer
+outputs:
+  green_led:
+    type: led
+    gpio_pin: 4
+  buzzer:
+    type: haptic
+    source_bus: i2c
+    motor: lra
     effect: 52
     delay: 1
-  - action: mqtt
-    value: 'ON'
+  spark_sound:
+    type: sound
+    file: spark.wav
     delay: 5
-  - action: http
-    url: 'http://homeassistant.local:8123/api/services/light/turn_on'
-    bearer_token: '***'
-    post_data:
-      color_temp: 370
-      brightness: 255
-      entity_id:
-      - light.lamp_left
-      - light.lamp_right
-    delay: 5
-  - action: http
-    url: 'http://homeassistant.local:8123/api/services/media_player/turn_on'
-    bearer_token: '***'
-    post_data:
-      entity_id:
-      - media_player.main_monitor
-    delay: 5
-  off_actions:
-  - action: led
-    device: redled
-    value: 'off'
-  - action: mqtt
-    value: 'OFF'
-    delay: 5
-  - action: http
-    url: 'http://homeassistant.local:8123/api/services/light/turn_off'
+  lights:
+    type: http
     bearer_token: '***'
     post_data:
       entity_id:
       - light.lamp_left
       - light.lamp_right
     delay: 5
-  - action: http
-    url: 'http://homeassistant.local:8123/api/services/media_player/turn_off'
+  main_monitor:
+    type: http
     bearer_token: '***'
     post_data:
-      entity_id:
-      - media_player.main_monitor
+      entity_id: media_player.main_monitor
     delay: 5
+inputs:
+  switch:
+    type: button
+    title: Big Mad Scientist Knife Switch
+    gpio_pin: 17
+    debounce: 0.5
+    actions:
+      pressed:
+        - name: green_led
+          action: "on"
+          init: true
+        - name: spark_sound
+        - name: buzzer
+        - name: lights
+          url: 'http://homeassistant.local:8123/api/services/light/turn_on'
+          post_data:
+            color_temp: 370
+            brightness: 255
+        - name: main_monitor
+          url: 'http://homeassistant.local:8123/api/services/media_player/turn_on'
+    released:
+        - name: green_led
+          action: "off"
+          init: true
+        - name: door_closing
+        - name: lights
+          url: 'http://homeassistant.mnk:8123/api/services/light/turn_off'
+        - name: main_monitor
+          url: 'http://homeassistant.mnk:8123/api/services/media_player/turn_off'
