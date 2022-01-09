@@ -2,8 +2,8 @@ print("Loaded pi_control device module")
 
 import adafruit_drv2605
 import board
+import boto3
 import busio
-# from gpiozero import Button, LED, MCP3008
 import gpiozero
 import json
 import os
@@ -906,8 +906,75 @@ class HTTP(OutputDevice):
 		if self._debug:
 			print("cmd:", cmd)
 		os.system(cmd)
+	
+
+class Message(OutputDevice):
+	"""
+	message = pi_control.device.Message(name, args)
+	"""
+	def __init__(self, name, args={}, debug_pref=False):
+		super().__init__(name, args, debug_pref)
+		self._type = 'message'
+		
+		self._service = None
+		if 'service' not in args:
+			raise KeyError("service is required for {} {}".format(self.type, self.name))
+		if type(args['service']) is not str:
+			raise TypeError("service in output {} must be type str".format(self.name))
+		if args['service'] not in ['sns']:
+			raise ValueError("Invalid service in output {}".format(self.name))
+		self._service = args['service']
+		
+		self._message = None
+		if 'message' in args:
+			if type(args['message']) is not str:
+				raise TypeError("message in output {} must be type str".format(self.name))
+			self._message = args['message']
+		
+		if self._service == 'sns':
+			self._sns = boto3.client('sns')
+			self._sns.set_sms_attributes(attributes = { 'DefaultSMSType': 'Transactional' })
+			
+			if 'topic_arn' in args:
+				if type(args['topic_arn']) is not str:
+					raise TypeError("topic_arn in output {} must be type str".format(self.name))
+				self._topic_arn = args['topic_arn']
+			if not self._topic_arn:
+				raise KeyError("topic_arn is required for {} action {}".format(self.type, self.name))
 		
 	
+	"""
+	message.action()
+	"""
+	def action(self, action_info):
+		if 'action' not in action_info:
+			action_info['action'] = self._service
+		super().action(action_info)
+		action = action_info['action']
+		
+		# Set variables
+		message = self._message
+		if 'message' in action_info:
+			if type(action_info['message']) is not str:
+				raise TypeError("message in action {} must be type str".format(self.name))
+			message = action_info['message']
+		if not message:
+			raise KeyError("message is required for {} action {}".format(self.type, self.name))
+		
+		if self._service == 'sns':
+			response = self._sns.publish(
+				TopicArn = self._topic_arn,
+				Message = message,
+				MessageStructure = 'string'
+			)
+			
+			if self._debug:
+				print("response:", response)
+			if type(response) is dict and 'ResponseMetadata' in response:
+				if response['ResponseMetadata'].get('HTTPStatusCode') == 200:
+					return response.get('MessageId')
+		
+
 class Sound(OutputDevice):
 	"""
 	sound = pi_control.device.Sound(name, args)

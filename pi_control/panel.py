@@ -76,6 +76,8 @@ class Panel:
 					self._outputs[name] = pi_control.device.Haptic(name, device_info, debug)
 				elif device_info['type'] == 'http':
 					self._outputs[name] = pi_control.device.HTTP(name, device_info, debug)
+				elif device_info['type'] == 'message':
+					self._outputs[name] = pi_control.device.Message(name, device_info, debug)
 				elif device_info['type'] == 'sound':
 					self._outputs[name] = pi_control.device.Sound(name, device_info, debug)
 				else:

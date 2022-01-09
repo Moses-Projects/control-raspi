@@ -27,6 +27,12 @@ outputs:
     post_data:
       entity_id: media_player.main_monitor
     delay: 5
+  ring_ring:
+    type: message
+    service: sns
+    topic_arn: 'arn:aws:sns:*:*:doorbell'
+    message: 'Ring! Ring!'
+    delay: 10
 inputs:
   switch:
     type: button
@@ -47,6 +53,7 @@ inputs:
             brightness: 255
         - name: main_monitor
           url: 'http://homeassistant.local:8123/api/services/media_player/turn_on'
+        - name: ring_ring
     released:
         - name: green_led
           action: "off"

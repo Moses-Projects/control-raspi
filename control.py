@@ -4,7 +4,7 @@ import time
 
 import pi_control.panel
 
-panel = pi_control.panel.Panel('monitor_panel', '/opt/control/control.yml', True)
+panel = pi_control.panel.Panel('monitor_panel', '/opt/control/control.yml', False)
 
 # print("{}: {}".format(panel.name, panel.devices))
 # print(panel.devices['power_switch']._actions)
