@@ -1,6 +1,8 @@
 print("Loaded pi_control panel module")
 
+import inspect
 import os
+import re
 import threading
 import time
 import yaml
@@ -14,7 +16,6 @@ import pi_control.device
 2022-01-08 Separated expanders, outputs, and inputs in the config.
 
 To do:
-  Separate actions into class
   Should take_action() run in a thread?
 """
 
@@ -22,7 +23,7 @@ To do:
 import pi_control.panel
 """
 
-debug = False
+debug = True
 
 class Panel:
 	"""
@@ -32,6 +33,8 @@ class Panel:
 		global debug
 		if debug_pref:
 			debug = True
+		log_level = 'notice'
+		self._output_level = self.convert_log_level(log_level)
 		
 		self._name = str(panel_name)
 		if type(devices) is str:
@@ -41,8 +44,8 @@ class Panel:
 		
 		self._polling_interval = 2.5
 		
-		if debug:
-			print("devices:", devices)
+# 		if debug:
+# 			print("devices:", devices)
 		self._expanders = {}
 		self._outputs = {}
 		self._inputs = {}
@@ -54,7 +57,7 @@ class Panel:
 					raise AttributeError("Expander {} is missing a valid type".format(name))
 				device_info['panel'] = self
 				
-				self._expanders[name] = pi_control.device.ExpanderDevice(name, device_info, debug)
+				self._expanders[name] = pi_control.device.ExpanderDevice(name, device_info, debug, log_level)
 		
 		# Fill source_devices and init outputs
 		if 'outputs' in devices:
@@ -71,15 +74,15 @@ class Panel:
 					device_info['source_device'] = self._expanders[device_info['source_device']]
 				
 				if device_info['type'] == 'led':
-					self._outputs[name] = pi_control.device.LED(name, device_info, debug)
+					self._outputs[name] = pi_control.device.LED(name, device_info, debug, log_level)
 				elif device_info['type'] == 'haptic':
-					self._outputs[name] = pi_control.device.Haptic(name, device_info, debug)
+					self._outputs[name] = pi_control.device.Haptic(name, device_info, debug, log_level)
 				elif device_info['type'] == 'http':
-					self._outputs[name] = pi_control.device.HTTP(name, device_info, debug)
+					self._outputs[name] = pi_control.device.HTTP(name, device_info, debug, log_level)
 				elif device_info['type'] == 'message':
-					self._outputs[name] = pi_control.device.Message(name, device_info, debug)
+					self._outputs[name] = pi_control.device.Message(name, device_info, debug, log_level)
 				elif device_info['type'] == 'sound':
-					self._outputs[name] = pi_control.device.Sound(name, device_info, debug)
+					self._outputs[name] = pi_control.device.Sound(name, device_info, debug, log_level)
 				else:
 					raise ValueError("Device type {} not found".format(device_info['type']))
 		
@@ -101,11 +104,13 @@ class Panel:
 				# Process actions
 				device = None
 				if device_info['type'] == 'button':
-					device = pi_control.device.Button(name, device_info, debug)
+					device = pi_control.device.Button(name, device_info, debug, log_level)
 				elif device_info['type'] == 'potentiometer':
-					device = pi_control.device.Potentiometer(name, device_info, debug)
+					device = pi_control.device.Potentiometer(name, device_info, debug, log_level)
 				elif device_info['type'] == 'rotary_encoder':
-					device = pi_control.device.RotaryEncoder(name, device_info, debug)
+					device = pi_control.device.RotaryEncoder(name, device_info, debug, log_level)
+				elif device_info['type'] == 'selector_switch':
+					device = pi_control.device.SelectorSwitch(name, device_info, debug, log_level)
 				else:
 					raise ValueError("Device type {} not found".format(device_info['type']))
 				
@@ -123,6 +128,41 @@ class Panel:
 			self._monitor_thread = threading.Thread(target=self.monitor_devices, args=(lambda : self._monitor_stop, ))
 			self._monitor_thread.start()
 
+	def convert_log_level(self, name):
+		if name == 'debug':
+			return 0
+		elif name in ['info', 'start', 'end']:
+			return 1
+		elif name == 'notice':
+			return 2
+		elif name == 'warn':
+			return 3
+		elif name == 'error':
+			return 4
+		elif name == 'crit':
+			return 5
+		elif name == 'alert':
+			return 6
+		elif name == 'emerg':
+			return 7
+	
+	def log(self, message, level='debug'):
+		log_level = self.convert_log_level(level)
+		if log_level < self._output_level:
+			return
+		cnt = 0
+		for i in range(len(inspect.stack())):
+			function = inspect.stack()[i].function
+			if function not in ('<module>', '__init__', 'inner'):
+				cnt += 1
+		indent = '  ' * cnt
+		if level not in ['start', 'end']:
+			indent = '  ' + indent
+		function = inspect.stack()[1].function
+		filename = re.sub(r'^.*\/', '', inspect.stack()[1].filename)
+		line = inspect.stack()[1].lineno
+		print("{}{}:{}() {}: {}".format(indent, filename, function, line, message))
+	
 	@property
 	def name(self):
 		return self._name
@@ -155,7 +195,7 @@ class Panel:
 		return None
 	
 	def take_action(self, input_device, action_name, startup=False):
-# 		print(input_device.name + ": Take action")
+		self.log(input_device.name, 'start')
 		actions = input_device.get_actions(action_name)
 		cnt = 0
 		for action in actions:
@@ -171,11 +211,13 @@ class Panel:
 			if 'name' in action:
 				if action['name'] not in self._outputs:
 					raise ValueError("Output {} in action for {}.{} not found".format(action['name'], device_name, action_name))
-# 				print("  action()")
+# 				self.log("  action()")
 				device = self._outputs[action['name']]
 				if pi_control.is_method(device, 'action'):
 					device.action(action)
+		self.log(input_device.name, 'end')
 	
+	# Main monitoring loop
 	def monitor_devices(self, stop_function=lambda:True):
 		while 42:
 			for name, device in self._inputs.items():
@@ -198,11 +240,11 @@ class Panel:
 			with open(path) as file:
 				data = yaml.load(file, Loader=yaml.FullLoader)
 				if not len(data):
-					print("Config file is empty.")
+					self.log("Config file is empty.")
 					raise ValueError;
 				return data
 		else:
-			print("Config file not found at '{}'".format(path))
+			self.log("Config file not found at '{}'".format(path))
 			raise FileNotFoundError;
 	
 		

@@ -5,6 +5,7 @@ import board
 import boto3
 import busio
 import gpiozero
+import inspect
 import json
 import os
 import random
@@ -21,10 +22,10 @@ import pi_control.__init__
 2022-01-04 Added update_status for potentiometers.
 2022-01-04 Added actions based on value ranges.
 2022-01-05 Added GPIO rotary encoder.
-2022-01-08 Added HTTP and Sound outputs.
+2022-01-08 Added HTTP, Message, and Sound outputs.
+2022-01-08 Added Haptic device.
 
 To do:
-	Add I2C haptic driver
 	Add I2C MCP23xxx expander
 	Add rotary encoder w/ MCP23xxx
 	Consolidate last_status and last_action?
@@ -32,7 +33,6 @@ To do:
 	Add outputs
 		wait
 		print
-		sns
 		mqtt
 """
 
@@ -40,17 +40,17 @@ To do:
 import pi_control.device
 """
 
-debug = False
 
 class Device:
 	"""
 	device = pi_control.device.Device(name, args)
 	"""
-	def __init__(self, name, args={}, debug_pref=False):
+	def __init__(self, name, args={}, debug_pref=False, log_level='notice'):
 		global debug
 		self._debug = False
 		if debug_pref:
 			self._debug = True
+		self._output_level = self.convert_log_level(log_level)
 		
 		self._name = str(name)
 		self._type = 'device'
@@ -79,6 +79,41 @@ class Device:
 		self._source_channel = None
 		if 'source_channel' in args:
 			self.source_channel = args['source_channel']
+	
+	def convert_log_level(self, name):
+		if name == 'debug':
+			return 0
+		elif name in ['info', 'start', 'end']:
+			return 1
+		elif name == 'notice':
+			return 2
+		elif name == 'warn':
+			return 3
+		elif name == 'error':
+			return 4
+		elif name == 'crit':
+			return 5
+		elif name == 'alert':
+			return 6
+		elif name == 'emerg':
+			return 7
+	
+	def log(self, message, level='debug'):
+		log_level = self.convert_log_level(level)
+		if log_level < self._output_level:
+			return
+		cnt = 0
+		for i in range(len(inspect.stack())):
+			function = inspect.stack()[i].function
+			if function not in ('<module>', '__init__', 'inner'):
+				cnt += 1
+		indent = '  ' * cnt
+		if level not in ['start', 'end']:
+			indent = '  ' + indent
+		function = inspect.stack()[1].function
+		filename = re.sub(r'^.*\/', '', inspect.stack()[1].filename)
+		line = inspect.stack()[1].lineno
+		print("{}{}:{}() {}: {}".format(indent, filename, function, line, message))
 	
 	@property
 	def name(self):
@@ -162,7 +197,7 @@ class ExpanderDevice(Device):
 	"""
 	device = pi_control.device.ExpanderDevice(name, args)
 	"""
-	def __init__(self, name, args={}, debug_pref=False):
+	def __init__(self, name, args={}, debug_pref=False, log_level='notice'):
 		super().__init__(name, args, debug_pref)
 		self._type = 'expander'
 		
@@ -252,7 +287,7 @@ class InputDevice(Device):
 	"""
 	device = pi_control.device.InputDevice(name, args)
 	"""
-	def __init__(self, name, args={}, debug_pref=False):
+	def __init__(self, name, args={}, debug_pref=False, log_level='notice'):
 		super().__init__(name, args, debug_pref)
 		self._type = 'input'
 		self._update_timer = None
@@ -313,44 +348,47 @@ class InputDevice(Device):
 		self._action_keys = list(self._actions.keys())
 		self._action_keys.sort()
 	
-	def change_status(self, status, startup=False):
-# 		print(self.name + ": Change status")
+	def change_status(self, status, startup=False, force=False):
+		self.log(self.name, 'start')
 		
 		# No change, skip
-		if self.last_status == status:
-			print('  ' + self.name + ' no change')
+		if not force and self.last_status == status:
+			self.log(self.name + ' no change', 'end')
 			return False
 		
 		# Wait for debounce time to finish, skip
 		if self.on_hold:
-			print('  ' + self.name + ' skipping')
+			self.log(self.name + ' skipping', 'end')
 			return False
 		
 		# A change has occurred!
+		self.log('cancel update timer', 'info')
 		self.cancel_update_timer()
 		self.last_changed_ts = time.time()
 		self.last_status = status
-		print('  ' + self.name + ' ' + str(status))
+		self.log(self.name + ' ' + str(status))
 		
-# 		print("  take action")
+		self.log("panel take action", 'info')
 		self.panel.take_action(self, status, startup)
 		
 		if not startup:
+			self.log('start update timer', 'info')
 			self.start_update_timer()
+		self.log(self.name, 'end')
 		return True
 	
 	def start_update_timer(self):
-# 		print(self.name + ": Start update timer")
+# 		self.log(self.name, 'start')
 		if not pi_control.is_method(self, 'update_status'):
 			return
 		
 		duration = self.debounce + .1
 		self._update_timer = threading.Timer(duration, self.update_status)
-# 		print("{}: Starting {} - {}".format(self.name, self._update_timer, duration))
+# 		self.log("{}: Starting {} - {}".format(self.name, self._update_timer, duration))
 		self._update_timer.start()
 	
 	def cancel_update_timer(self):
-# 		print(self.name + ": Cancel update timer")
+# 		self.log(self.name, 'start')
 		if not self._update_timer:
 			return
 		self._update_timer.cancel()
@@ -361,7 +399,7 @@ class Button(InputDevice):
 	"""
 	button = pi_control.device.Button(name, args)
 	"""
-	def __init__(self, name, args={}, debug_pref=False):
+	def __init__(self, name, args={}, debug_pref=False, log_level='notice'):
 		super().__init__(name, args, debug_pref)
 		self._type = 'button'
 		
@@ -378,8 +416,8 @@ class Button(InputDevice):
 				pull_up_value = False
 		
 		# Init
-		self._connection = gpiozero.Button(self._gpio_pin, pull_up=pull_up_value)
-		self._connection.when_pressed = self.event_pressed
+		self._connection = gpiozero.Button(self._gpio_pin, pull_up=pull_up_value, hold_time=0.1)
+		self._connection.when_held = self.event_pressed
 		self._connection.when_released = self.event_released
 	
 	
@@ -390,26 +428,28 @@ class Button(InputDevice):
 		return False
 	
 	def event_pressed(self):
-		print(self.name + ": Pressed")
+		self.log(self.name + " pressed", 'notice')
 		self.change_status('pressed')
 	
 	def event_released(self):
-		print(self.name + ": Released")
+		self.log(self.name + " released", 'notice')
 		self.change_status('released')
 	
 	def update_status(self, startup=False):
+		self.log(self.name, 'start')
 		if self.pressed:
-			print(self.name + ": Update status - pressed")
+			self.log("pressed", 'info')
 			self.change_status('pressed', startup)
 		else:
-			print(self.name + ": Update status - released")
+			self.log("released", 'info')
 			self.change_status('released', startup)
+		self.log(self.name, 'end')
 	
 class Potentiometer(InputDevice):
 	"""
 	button = pi_control.device.Potentiometer(name, args)
 	"""
-	def __init__(self, name, args={}, debug_pref=False):
+	def __init__(self, name, args={}, debug_pref=False, log_level='notice'):
 		super().__init__(name, args, debug_pref)
 		self._type = 'potentiometer'
 		self._needs_monitoring = True
@@ -432,9 +472,11 @@ class Potentiometer(InputDevice):
 	@property
 	def value(self):
 		self._last_value = int(self._connection.value * 100)
+		self.log(self.name + " " + self._last_value, 'notice')
 		return self._last_value
 	
 	def update_status(self, startup=False):
+		self.log(self.name, 'start')
 		value = self.value
 		action_key = None
 		for key in self._action_keys:
@@ -442,18 +484,72 @@ class Potentiometer(InputDevice):
 				action_key = key
 				break
 		if type(action_key) is type(None):
+			self.log(self.name + ' no action key', 'end')
 			return None
 		if action_key == self._last_action_key:
+			self.log(self.name + ' same as last action', 'end')
 			return None
-		print("{}: {} - {}".format(value, self._last_action_key, action_key))
+		self.log("{}: {} - {}".format(value, self._last_action_key, action_key))
 		self._last_action_key = action_key
 		self.change_status(action_key, startup)
+		self.log(self.name, 'end')
 		
 class RotaryEncoder(InputDevice):
 	"""
-	button = pi_control.device.RotaryEncoder(name, args)
+	rotary_encoder = pi_control.device.RotaryEncoder(name, args)
 	"""
-	def __init__(self, name, args={}, debug_pref=False):
+	def __init__(self, name, args={}, debug_pref=False, log_level='notice'):
+		super().__init__(name, args, debug_pref)
+		self._type = 'rotary_encoder'
+		self._value_type = 'absolute'
+		self._total_segments = 16
+		self._last_value = 0
+		
+		# Properties
+		if 'gpio_pins' not in args:
+			raise AttributeError("GPIO pins required for {} {}".format(self.type, self.name))
+		if 'up' not in args['gpio_pins'] or 'down' not in args['gpio_pins']:
+			raise AttributeError("'up' and 'down' GPIO pins required for {} {}".format(self.type, self.name))
+		
+		if 'value_type' in args:
+			if args['value_type'] == 'directional':
+				self._value_type = args['value_type']
+		
+		# Init
+		self._connection = gpiozero.RotaryEncoder(args['gpio_pins']['up'], args['gpio_pins']['down'])
+		self._connection.when_rotated_clockwise = self.event_up
+		self._connection.when_rotated_counter_clockwise = self.event_down
+		if 'total_segments' in args:
+			self._total_segments = int(args['total_segments']/2)
+	
+	def event_up(self):
+		label = self._connection.steps
+		if self._value_type == 'directional':
+			label = "up"
+		self.log(self.name + " " + label, 'notice')
+		self.change_status(label, False, True)
+	
+	def event_down(self):
+		label = self._connection.steps
+		if self._value_type == 'directional':
+			label = "down"
+		self.log(self.name + " " + label, 'notice')
+		self.change_status(label, False, True)
+	
+	def update_status(self, startup=False):
+		self.log(self.name, 'start')
+		label = self._connection.steps
+		if self._value_type == 'directional':
+			label = self.last_status
+		self.log(self.name + ": Update status - " + str(label))
+# 		self.change_status(label, startup)
+		self.log(self.name, 'end')
+	
+class SelectorSwitch(InputDevice):
+	"""
+	button = pi_control.device.SelectorSwitch(name, args)
+	"""
+	def __init__(self, name, args={}, debug_pref=False, log_level='notice'):
 		super().__init__(name, args, debug_pref)
 		self._type = 'button'
 		
@@ -485,16 +581,20 @@ class RotaryEncoder(InputDevice):
 	def event_selected(self):
 		label = self.selection
 		if not label:
+			self.log(self.name + ' no label', 'end')
 			return
-		print(self.name + ": " + label)
+		self.log(self.name + " " + label, 'notice')
 		self.change_status(label)
 	
 	def update_status(self, startup=False):
+		self.log(self.name, 'start')
 		label = self.selection
 		if not label:
+			self.log(self.name + ' no label', 'end')
 			return
-		print(self.name + ": Update status - " + label)
+		self.log(self.name + ": Update status - " + label)
 		self.change_status(label, startup)
+		self.log(self.name, 'end')
 	
 
 
@@ -506,7 +606,7 @@ class OutputDevice(Device):
 	"""
 	device = pi_control.device.OutputDevice(name, args)
 	"""
-	def __init__(self, name, args={}, debug_pref=False):
+	def __init__(self, name, args={}, debug_pref=False, log_level='notice'):
 		super().__init__(name, args, debug_pref)
 		self._type = 'output'
 		self._threads = []
@@ -567,7 +667,7 @@ class LED(OutputDevice):
 	"""
 	led = pi_control.device.LED(name, args)
 	"""
-	def __init__(self, name, args={}, debug_pref=False):
+	def __init__(self, name, args={}, debug_pref=False, log_level='notice'):
 		super().__init__(name, args, debug_pref)
 		self._type = 'led'
 		if 'gpio_pin' not in args:
@@ -588,19 +688,19 @@ class LED(OutputDevice):
 		off_actions = ['off', 'flicker_off']
 		
 		if self.last_status == 'on' and action in on_actions:
-			print('  ' + self.name + ' no change')
+			self.log(self.name + ' no change')
 			return False
 		if self.last_status == 'off' and action in off_actions:
-			print('  ' + self.name + ' no change')
+			self.log(self.name + ' no change')
 			return False
 		
 		value = None
 		if 'value' in action_info:
 			value = float(action_info['value'])
-		duration = None
+		duration = 1
 		if 'duration' in action_info:
 			duration = float(action_info['duration'])
-		iterations = None
+		iterations = 1
 		if 'iterations' in action_info:
 			iterations = int(action_info['iterations'])
 		
@@ -665,7 +765,7 @@ class LED(OutputDevice):
 			time.sleep(on_duration)
 		
 		if stop_function():
-			print("  STOP")
+			self.log("STOP")
 		self.off()
 		return self.finish_thread(id)
 	
@@ -692,7 +792,7 @@ class LED(OutputDevice):
 			time.sleep(on_duration)
 		
 		if stop_function():
-			print("  STOP")
+			self.log("STOP")
 			self.off()
 		else:
 			self.on()
@@ -721,7 +821,7 @@ class LED(OutputDevice):
 			time.sleep(off_duration)
 		
 		if stop_function():
-			print("  STOP")
+			self.log("STOP")
 			self.on()
 		self.off()
 		return self.finish_thread(id)
@@ -742,7 +842,7 @@ class LED(OutputDevice):
 			time.sleep(on_duration)
 		
 		if stop_function():
-			print("  STOP")
+			self.log("STOP")
 			self.off()
 		else:
 			self.on()
@@ -764,7 +864,7 @@ class LED(OutputDevice):
 			time.sleep(on_duration)
 		
 		if stop_function():
-			print("  STOP")
+			self.log("STOP")
 			self.on()
 		self.off()
 		return self.finish_thread(id)
@@ -774,7 +874,7 @@ class Haptic(OutputDevice):
 	"""
 	haptic = pi_control.device.Haptic(name, args)
 	"""
-	def __init__(self, name, args={}, debug_pref=False):
+	def __init__(self, name, args={}, debug_pref=False, log_level='notice'):
 		super().__init__(name, args, debug_pref)
 		self._type = 'haptic'
 		if 'source_bus' not in args:
@@ -830,7 +930,7 @@ class HTTP(OutputDevice):
 	"""
 	http = pi_control.device.HTTP(name, args)
 	"""
-	def __init__(self, name, args={}, debug_pref=False):
+	def __init__(self, name, args={}, debug_pref=False, log_level='notice'):
 		super().__init__(name, args, debug_pref)
 		self._type = 'http'
 		self._method = 'get'
@@ -904,7 +1004,7 @@ class HTTP(OutputDevice):
 		
 		cmd = 'curl -s{}{} {} &'.format(auth_string, post_string, url)
 		if self._debug:
-			print("cmd:", cmd)
+			self.log("cmd: " + cmd)
 		os.system(cmd)
 	
 
@@ -912,7 +1012,7 @@ class Message(OutputDevice):
 	"""
 	message = pi_control.device.Message(name, args)
 	"""
-	def __init__(self, name, args={}, debug_pref=False):
+	def __init__(self, name, args={}, debug_pref=False, log_level='notice'):
 		super().__init__(name, args, debug_pref)
 		self._type = 'message'
 		
@@ -969,7 +1069,7 @@ class Message(OutputDevice):
 			)
 			
 			if self._debug:
-				print("response:", response)
+				self.log("response:", response)
 			if type(response) is dict and 'ResponseMetadata' in response:
 				if response['ResponseMetadata'].get('HTTPStatusCode') == 200:
 					return response.get('MessageId')
@@ -979,7 +1079,7 @@ class Sound(OutputDevice):
 	"""
 	sound = pi_control.device.Sound(name, args)
 	"""
-	def __init__(self, name, args={}, debug_pref=False):
+	def __init__(self, name, args={}, debug_pref=False, log_level='notice'):
 		super().__init__(name, args, debug_pref)
 		self._type = 'sound'
 		self._file = None
