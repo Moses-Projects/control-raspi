@@ -635,6 +635,7 @@ class OutputDevice(Device):
 		self._last_action_ts = ts
 	
 	def action(self, action_info):
+		self.log(self._type, 'start')
 		if 'action' not in action_info:
 			raise AttributeError("action empty when calling {}".format(self.name))
 		
@@ -645,6 +646,7 @@ class OutputDevice(Device):
 		
 		self.last_action_ts = time.time()
 		self.last_action = action_info['action']
+		self.log(self._type, 'end')
 	
 	def start_thread(self, target_method, method_args):
 		thread = { "stop": False, "id": random.randint(1000000, 10000000) }
@@ -682,6 +684,7 @@ class LED(OutputDevice):
 	def action(self, action_info):
 		super().action(action_info)
 		action = action_info['action']
+		self.log(action, 'info')
 		
 		# No change, skip
 		on_actions = ['on', 'flicker_on']

@@ -33,7 +33,7 @@ class Panel:
 		global debug
 		if debug_pref:
 			debug = True
-		log_level = 'notice'
+		log_level = 'info'
 		self._output_level = self.convert_log_level(log_level)
 		
 		self._name = str(panel_name)
