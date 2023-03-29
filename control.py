@@ -5,7 +5,7 @@ import time
 import pi_control.panel
 import pi_control.ui
 
-ui = pi_control.ui.Interface(use_slack_format=True, log_level=6, usage_message = """
+ui = pi_control.ui.Interface(use_slack_format=True, log_level=4, usage_message = """
 Usage:
   /opt/control/control.py [options]
   
@@ -50,7 +50,7 @@ def main():
 	elif opts['vvv']:
 		log_level = 7
 	
-	panel = pi_control.panel.Panel('monitor_panel', '/opt/control/control.yml', log_level=log_level)
+	panel = pi_control.panel.Panel('monitor_panel', '/opt/control/control.yml', dry_run=dry_run, log_level=log_level)
 	
 	while 42:
 		time.sleep(1)

@@ -14,6 +14,7 @@ import pi_control.device
 2022-01-01 Added option to read from a config file.
 2022-01-02 Added monitoring for devices without events.
 2022-01-08 Separated expanders, outputs, and inputs in the config.
+2023-03-29 Improved logging.
 
 To do:
   Separate actions into class
@@ -125,26 +126,26 @@ class Panel:
 			self._monitor_thread.start()
 
 	def convert_log_level(self, name):
-		if name == 'debug':
-			return 0
-		elif name in ['info', 'start', 'end']:
-			return 1
-		elif name == 'notice':
-			return 2
-		elif name == 'warn':
-			return 3
-		elif name == 'error':
-			return 4
-		elif name == 'crit':
-			return 5
-		elif name == 'alert':
-			return 6
-		elif name == 'emerg':
+		if name in ['debug', 'start', 'end']:
 			return 7
+		elif name == 'info':
+			return 6
+		elif name == 'notice':
+			return 5
+		elif name == 'warn':
+			return 4
+		elif name == 'error':
+			return 3
+		elif name == 'crit':
+			return 2
+		elif name == 'alert':
+			return 1
+		elif name == 'emerg':
+			return 0
 	
 	def log(self, message, level='debug'):
 		log_level = self.convert_log_level(level)
-		if log_level < self._output_level:
+		if log_level > self._log_level:
 			return
 		cnt = 0
 		for i in range(len(inspect.stack())):
@@ -157,7 +158,10 @@ class Panel:
 		function = inspect.stack()[1].function
 		filename = re.sub(r'^.*\/', '', inspect.stack()[1].filename)
 		line = inspect.stack()[1].lineno
-		print("{}{}:{}() {}: {}".format(indent, filename, function, line, message))
+		if log_level < 7:
+			print("  {}:{}() {}: {}".format(filename, function, line, message))
+		else:
+			print("{}{}:{}() {}: {}".format(indent, filename, function, line, message))
 	
 	@property
 	def name(self):
@@ -236,11 +240,11 @@ class Panel:
 			with open(path) as file:
 				data = yaml.load(file, Loader=yaml.FullLoader)
 				if not len(data):
-					self.log("Config file is empty.")
+					self.log("Config file is empty.", 'error')
 					raise ValueError;
 				return data
 		else:
-			self.log("Config file not found at '{}'".format(path))
+			self.log("Config file not found at '{}'".format(path), 'error')
 			raise FileNotFoundError;
 	
 		

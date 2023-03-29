@@ -24,6 +24,7 @@ import pi_control.__init__
 2022-01-05 Added GPIO rotary encoder.
 2022-01-08 Added HTTP, Message, and Sound outputs.
 2022-01-08 Added Haptic device.
+2023-03-29 Improved logging.
 
 To do:
 	Add I2C haptic driver
@@ -91,9 +92,9 @@ class Device:
 			self.source_channel = args['source_channel']
 	
 	def convert_log_level(self, name):
-		if name == 'debug':
+		if name in ['debug', 'start', 'end']:
 			return 7
-		elif name in ['info', 'start', 'end']:
+		elif name == 'info':
 			return 6
 		elif name == 'notice':
 			return 5
@@ -110,7 +111,7 @@ class Device:
 	
 	def log(self, message, level='debug'):
 		log_level = self.convert_log_level(level)
-		if log_level < self._output_level:
+		if log_level > self._log_level:
 			return
 		cnt = 0
 		for i in range(len(inspect.stack())):
@@ -123,7 +124,10 @@ class Device:
 		function = inspect.stack()[1].function
 		filename = re.sub(r'^.*\/', '', inspect.stack()[1].filename)
 		line = inspect.stack()[1].lineno
-		print("{}{}:{}() {}: {}".format(indent, filename, function, line, message))
+		if log_level < 7:
+			print("  {}:{}() {}: {}".format(filename, function, line, message))
+		else:
+			print("{}{}:{}() {}: {}".format(indent, filename, function, line, message))
 	
 	@property
 	def name(self):
@@ -216,7 +220,7 @@ class ExpanderDevice(Device):
 	device = pi_control.device.ExpanderDevice(name, args)
 	"""
 	def __init__(self, name, args={}, dry_run=False, log_level=None):
-		super().__init__(name, args, dry_run=dry_run, log_level)
+		super().__init__(name, args, dry_run=dry_run, log_level=log_level)
 		self._type = 'expander'
 		
 		# Properties
@@ -306,7 +310,7 @@ class InputDevice(Device):
 	device = pi_control.device.InputDevice(name, args)
 	"""
 	def __init__(self, name, args={}, dry_run=False, log_level=None):
-		super().__init__(name, args, dry_run=dry_run, log_level)
+		super().__init__(name, args, dry_run=dry_run, log_level=log_level)
 		self._type = 'input'
 		self._update_timer = None
 		
@@ -418,7 +422,7 @@ class Button(InputDevice):
 	button = pi_control.device.Button(name, args)
 	"""
 	def __init__(self, name, args={}, dry_run=False, log_level=None):
-		super().__init__(name, args, dry_run=dry_run, log_level)
+		super().__init__(name, args, dry_run=dry_run, log_level=log_level)
 		self._type = 'button'
 		
 		# Properties
@@ -470,7 +474,7 @@ class Potentiometer(InputDevice):
 	button = pi_control.device.Potentiometer(name, args)
 	"""
 	def __init__(self, name, args={}, dry_run=False, log_level=None):
-		super().__init__(name, args, dry_run=dry_run, log_level)
+		super().__init__(name, args, dry_run=dry_run, log_level=log_level)
 		self._type = 'potentiometer'
 		self._needs_monitoring = True
 		self._last_value = 0
@@ -519,7 +523,7 @@ class RotaryEncoder(InputDevice):
 	rotary_encoder = pi_control.device.RotaryEncoder(name, args)
 	"""
 	def __init__(self, name, args={}, dry_run=False, log_level=None):
-		super().__init__(name, args, dry_run=dry_run, log_level)
+		super().__init__(name, args, dry_run=dry_run, log_level=log_level)
 		self._type = 'rotary_encoder'
 		self._value_type = 'absolute'
 		self._total_segments = 16
@@ -564,13 +568,14 @@ class RotaryEncoder(InputDevice):
 		self.log(self.name + ": Update status - " + str(label))
 # 		self.change_status(label, startup)
 		self.log(self.name, 'end')
-	
+
+
 class SelectorSwitch(InputDevice):
 	"""
 	button = pi_control.device.SelectorSwitch(name, args)
 	"""
 	def __init__(self, name, args={}, dry_run=False, log_level=None):
-		super().__init__(name, args, dry_run=dry_run, log_level)
+		super().__init__(name, args, dry_run=dry_run, log_level=log_level)
 		self._type = 'button'
 		
 		# Properties
@@ -627,7 +632,7 @@ class OutputDevice(Device):
 	device = pi_control.device.OutputDevice(name, args)
 	"""
 	def __init__(self, name, args={}, dry_run=False, log_level=None):
-		super().__init__(name, args, dry_run=dry_run, log_level)
+		super().__init__(name, args, dry_run=dry_run, log_level=log_level)
 		self._type = 'output'
 		self._threads = []
 		
@@ -690,7 +695,7 @@ class LED(OutputDevice):
 	led = pi_control.device.LED(name, args)
 	"""
 	def __init__(self, name, args={}, dry_run=False, log_level=None):
-		super().__init__(name, args, dry_run=dry_run, log_level)
+		super().__init__(name, args, dry_run=dry_run, log_level=log_level)
 		self._type = 'led'
 		if 'gpio_pin' not in args:
 			raise AttributeError("GPIO pin required for {} {}".format(self.type, self.name))
@@ -898,7 +903,7 @@ class Haptic(OutputDevice):
 	haptic = pi_control.device.Haptic(name, args)
 	"""
 	def __init__(self, name, args={}, dry_run=False, log_level=None):
-		super().__init__(name, args, dry_run=dry_run, log_level)
+		super().__init__(name, args, dry_run=dry_run, log_level=log_level)
 		self._type = 'haptic'
 		if 'source_bus' not in args:
 			raise AttributeError("Source bus required for {} {}".format(self.type, self.name))
@@ -954,7 +959,7 @@ class HTTP(OutputDevice):
 	http = pi_control.device.HTTP(name, args)
 	"""
 	def __init__(self, name, args={}, dry_run=False, log_level=None):
-		super().__init__(name, args, dry_run=dry_run, log_level)
+		super().__init__(name, args, dry_run=dry_run, log_level=log_level)
 		self._type = 'http'
 		self._method = 'get'
 		if 'method' in args:
@@ -1027,9 +1032,9 @@ class HTTP(OutputDevice):
 		
 		cmd = 'curl -s{}{} {} &'.format(auth_string, post_string, url)
 		if self._dry_run:
-			self.log("cmd: " + cmd)
+			self.log("cmd: " + cmd, 'notice')
 		else:
-			self.log("cmd: " + cmd)
+			self.log("cmd: " + cmd, 'info')
 			os.system(cmd)
 	
 
@@ -1037,8 +1042,8 @@ class Message(OutputDevice):
 	"""
 	message = pi_control.device.Message(name, args)
 	"""
-	def __init__(self, name, args={}, debug_pref=False, log_level='notice'):
-		super().__init__(name, args, debug_pref)
+	def __init__(self, name, args={}, dry_run=False, log_level=None):
+		super().__init__(name, args, dry_run=dry_run, log_level=log_level)
 		self._type = 'message'
 		
 		self._service = 'print'
@@ -1088,17 +1093,20 @@ class Message(OutputDevice):
 		if self._service == 'print':
 			print(message)
 		if self._service == 'sns':
-			response = self._sns.publish(
-				TopicArn = self._topic_arn,
-				Message = message,
-				MessageStructure = 'string'
-			)
-			
-			if self._debug:
-				self.log("response:", response)
-			if type(response) is dict and 'ResponseMetadata' in response:
-				if response['ResponseMetadata'].get('HTTPStatusCode') == 200:
-					return response.get('MessageId')
+			if self._dry_run:
+				self.log(self._topic_arn + ":\n  " + message, 'notice')
+			else:
+				self.log(self._topic_arn + ":\n  " + message, 'info')
+				response = self._sns.publish(
+					TopicArn = self._topic_arn,
+					Message = message,
+					MessageStructure = 'string'
+				)
+				
+				self.log("response:" + response, 'info')
+				if type(response) is dict and 'ResponseMetadata' in response:
+					if response['ResponseMetadata'].get('HTTPStatusCode') == 200:
+						return response.get('MessageId')
 		
 
 class Sound(OutputDevice):
@@ -1106,7 +1114,7 @@ class Sound(OutputDevice):
 	sound = pi_control.device.Sound(name, args)
 	"""
 	def __init__(self, name, args={}, dry_run=False, log_level=None):
-		super().__init__(name, args, dry_run=dry_run, log_level)
+		super().__init__(name, args, dry_run=dry_run, log_level=log_level)
 		self._type = 'sound'
 		self._file = None
 		if 'file' in args:
@@ -1133,9 +1141,15 @@ class Sound(OutputDevice):
 		if not file:
 			raise KeyError("file is required for {} action {}".format(self.type, self.name))
 		
+		cmd = None
 		if re.search(r'\.mp3', file):
-			os.system('mpg123 -q -m /opt/control/sounds/{} &'.format(file))
+			cmd = 'mpg123 -q -m /opt/control/sounds/{} &'.format(file)
 		elif re.search(r'\.wav', file):
-			os.system('aplay -q /opt/control/sounds/{} &'.format(file))
-
+			cmd = 'aplay -q /opt/control/sounds/{} &'.format(file)
+		
+		if self._dry_run:
+			self.log(cmd, 'notice')
+		else:
+			self.log(cmd, 'info')
+			os.system(cmd)
 
