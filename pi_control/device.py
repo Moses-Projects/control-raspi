@@ -316,14 +316,14 @@ class InputDevice(Device):
 	def change_status(self, status, startup=False):
 # 		print(self.name + ": Change status")
 		
-		# No change, skip
-		if self.last_status == status:
-			print('  ' + self.name + ' no change')
-			return False
-		
 		# Wait for debounce time to finish, skip
 		if self.on_hold:
 			print('  ' + self.name + ' skipping')
+			return False
+		
+		# No change, skip
+		if self.last_status == status:
+			print('  ' + self.name + ' no change')
 			return False
 		
 		# A change has occurred!
