@@ -16,6 +16,7 @@ import pi_control.device
 2022-01-08 Separated expanders, outputs, and inputs in the config.
 
 To do:
+  Separate actions into class
   Should take_action() run in a thread?
 """
 
@@ -23,18 +24,13 @@ To do:
 import pi_control.panel
 """
 
-debug = True
-
 class Panel:
 	"""
 	panel = pi_control.panel.Panel(name, config_filename || devices_dict)
 	"""
-	def __init__(self, panel_name, devices={}, debug_pref=False):
-		global debug
-		if debug_pref:
-			debug = True
-		log_level = 'info'
-		self._output_level = self.convert_log_level(log_level)
+	def __init__(self, panel_name, devices={}, dry_run=False, log_level=4):
+		self._dry_run = dry_run
+		self._log_level = log_level
 		
 		self._name = str(panel_name)
 		if type(devices) is str:
@@ -44,8 +40,8 @@ class Panel:
 		
 		self._polling_interval = 2.5
 		
-# 		if debug:
-# 			print("devices:", devices)
+		if self._log_level >= 6:
+			print("devices:", devices)
 		self._expanders = {}
 		self._outputs = {}
 		self._inputs = {}
@@ -57,7 +53,7 @@ class Panel:
 					raise AttributeError("Expander {} is missing a valid type".format(name))
 				device_info['panel'] = self
 				
-				self._expanders[name] = pi_control.device.ExpanderDevice(name, device_info, debug, log_level)
+				self._expanders[name] = pi_control.device.ExpanderDevice(name, device_info, dry_run=self._dry_run, log_level=self._log_level)
 		
 		# Fill source_devices and init outputs
 		if 'outputs' in devices:
@@ -74,15 +70,15 @@ class Panel:
 					device_info['source_device'] = self._expanders[device_info['source_device']]
 				
 				if device_info['type'] == 'led':
-					self._outputs[name] = pi_control.device.LED(name, device_info, debug, log_level)
+					self._outputs[name] = pi_control.device.LED(name, device_info, dry_run=self._dry_run, log_level=self._log_level)
 				elif device_info['type'] == 'haptic':
-					self._outputs[name] = pi_control.device.Haptic(name, device_info, debug, log_level)
+					self._outputs[name] = pi_control.device.Haptic(name, device_info, dry_run=self._dry_run, log_level=self._log_level)
 				elif device_info['type'] == 'http':
-					self._outputs[name] = pi_control.device.HTTP(name, device_info, debug, log_level)
+					self._outputs[name] = pi_control.device.HTTP(name, device_info, dry_run=self._dry_run, log_level=self._log_level)
 				elif device_info['type'] == 'message':
-					self._outputs[name] = pi_control.device.Message(name, device_info, debug, log_level)
+					self._outputs[name] = pi_control.device.Message(name, device_info, dry_run=self._dry_run, log_level=self._log_level)
 				elif device_info['type'] == 'sound':
-					self._outputs[name] = pi_control.device.Sound(name, device_info, debug, log_level)
+					self._outputs[name] = pi_control.device.Sound(name, device_info, dry_run=self._dry_run, log_level=self._log_level)
 				else:
 					raise ValueError("Device type {} not found".format(device_info['type']))
 		
@@ -104,13 +100,13 @@ class Panel:
 				# Process actions
 				device = None
 				if device_info['type'] == 'button':
-					device = pi_control.device.Button(name, device_info, debug, log_level)
+					device = pi_control.device.Button(name, device_info, dry_run=self._dry_run, log_level=self._log_level)
 				elif device_info['type'] == 'potentiometer':
-					device = pi_control.device.Potentiometer(name, device_info, debug, log_level)
+					device = pi_control.device.Potentiometer(name, device_info, dry_run=self._dry_run, log_level=self._log_level)
 				elif device_info['type'] == 'rotary_encoder':
-					device = pi_control.device.RotaryEncoder(name, device_info, debug, log_level)
+					device = pi_control.device.RotaryEncoder(name, device_info, dry_run=self._dry_run, log_level=self._log_level)
 				elif device_info['type'] == 'selector_switch':
-					device = pi_control.device.SelectorSwitch(name, device_info, debug, log_level)
+					device = pi_control.device.SelectorSwitch(name, device_info, dry_run=self._dry_run, log_level=self._log_level)
 				else:
 					raise ValueError("Device type {} not found".format(device_info['type']))
 				
@@ -122,7 +118,7 @@ class Panel:
 		
 		# Set monitoring thread
 		if needs_monitoring:
-			if debug:
+			if self._log_level >= 6:
 				print("Starting monitoring")
 			self._monitor_stop = False
 			self._monitor_thread = threading.Thread(target=self.monitor_devices, args=(lambda : self._monitor_stop, ))

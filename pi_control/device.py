@@ -26,6 +26,7 @@ import pi_control.__init__
 2022-01-08 Added Haptic device.
 
 To do:
+	Add I2C haptic driver
 	Add I2C MCP23xxx expander
 	Add rotary encoder w/ MCP23xxx
 	Consolidate last_status and last_action?
@@ -33,7 +34,18 @@ To do:
 	Add outputs
 		wait
 		print
+		sns
 		mqtt
+
+Log levels:
+    0 - Emergency (emerg)
+    1 - Alerts (alert)
+    2 - Critical (crit)
+    3 - Errors (err)
+    4 - Warnings (warn)
+    5 - Notification (notice)
+    6 - Information (info)
+    7 - Debug (debug)
 """
 
 """
@@ -45,17 +57,15 @@ class Device:
 	"""
 	device = pi_control.device.Device(name, args)
 	"""
-	def __init__(self, name, args={}, debug_pref=False, log_level='notice'):
-		global debug
-		self._debug = False
-		if debug_pref:
-			self._debug = True
-		self._output_level = self.convert_log_level(log_level)
+	def __init__(self, name, args={}, dry_run=False, log_level=4):
+		self._dry_run = dry_run
+		self._log_level = log_level
 		
 		self._name = str(name)
 		self._type = 'device'
 		self._needs_monitoring = False
-		self.last_status = None
+		self._last_status = None
+		self._last_value = None
 		self._connection = None
 		self._connections = {}
 		
@@ -82,21 +92,21 @@ class Device:
 	
 	def convert_log_level(self, name):
 		if name == 'debug':
-			return 0
-		elif name in ['info', 'start', 'end']:
-			return 1
-		elif name == 'notice':
-			return 2
-		elif name == 'warn':
-			return 3
-		elif name == 'error':
-			return 4
-		elif name == 'crit':
-			return 5
-		elif name == 'alert':
-			return 6
-		elif name == 'emerg':
 			return 7
+		elif name in ['info', 'start', 'end']:
+			return 6
+		elif name == 'notice':
+			return 5
+		elif name == 'warn':
+			return 4
+		elif name == 'error':
+			return 3
+		elif name == 'crit':
+			return 2
+		elif name == 'alert':
+			return 1
+		elif name == 'emerg':
+			return 0
 	
 	def log(self, message, level='debug'):
 		log_level = self.convert_log_level(level)
@@ -130,6 +140,14 @@ class Device:
 	@last_status.setter
 	def last_status(self, last_status):
 		self._last_status = last_status
+	
+	@property
+	def last_value(self):
+		return self._last_value
+	
+	@last_value.setter
+	def last_value(self, last_value):
+		self._last_value = last_value
 	
 	@property
 	def panel(self):
@@ -197,8 +215,8 @@ class ExpanderDevice(Device):
 	"""
 	device = pi_control.device.ExpanderDevice(name, args)
 	"""
-	def __init__(self, name, args={}, debug_pref=False, log_level='notice'):
-		super().__init__(name, args, debug_pref)
+	def __init__(self, name, args={}, dry_run=False, log_level=None):
+		super().__init__(name, args, dry_run=dry_run, log_level)
 		self._type = 'expander'
 		
 		# Properties
@@ -287,8 +305,8 @@ class InputDevice(Device):
 	"""
 	device = pi_control.device.InputDevice(name, args)
 	"""
-	def __init__(self, name, args={}, debug_pref=False, log_level='notice'):
-		super().__init__(name, args, debug_pref)
+	def __init__(self, name, args={}, dry_run=False, log_level=None):
+		super().__init__(name, args, dry_run=dry_run, log_level)
 		self._type = 'input'
 		self._update_timer = None
 		
@@ -399,8 +417,8 @@ class Button(InputDevice):
 	"""
 	button = pi_control.device.Button(name, args)
 	"""
-	def __init__(self, name, args={}, debug_pref=False, log_level='notice'):
-		super().__init__(name, args, debug_pref)
+	def __init__(self, name, args={}, dry_run=False, log_level=None):
+		super().__init__(name, args, dry_run=dry_run, log_level)
 		self._type = 'button'
 		
 		# Properties
@@ -429,10 +447,12 @@ class Button(InputDevice):
 	
 	def event_pressed(self):
 		self.log(self.name + " pressed", 'notice')
+		self._last_value = 100
 		self.change_status('pressed')
 	
 	def event_released(self):
 		self.log(self.name + " released", 'notice')
+		self._last_value = 0
 		self.change_status('released')
 	
 	def update_status(self, startup=False):
@@ -449,8 +469,8 @@ class Potentiometer(InputDevice):
 	"""
 	button = pi_control.device.Potentiometer(name, args)
 	"""
-	def __init__(self, name, args={}, debug_pref=False, log_level='notice'):
-		super().__init__(name, args, debug_pref)
+	def __init__(self, name, args={}, dry_run=False, log_level=None):
+		super().__init__(name, args, dry_run=dry_run, log_level)
 		self._type = 'potentiometer'
 		self._needs_monitoring = True
 		self._last_value = 0
@@ -498,8 +518,8 @@ class RotaryEncoder(InputDevice):
 	"""
 	rotary_encoder = pi_control.device.RotaryEncoder(name, args)
 	"""
-	def __init__(self, name, args={}, debug_pref=False, log_level='notice'):
-		super().__init__(name, args, debug_pref)
+	def __init__(self, name, args={}, dry_run=False, log_level=None):
+		super().__init__(name, args, dry_run=dry_run, log_level)
 		self._type = 'rotary_encoder'
 		self._value_type = 'absolute'
 		self._total_segments = 16
@@ -549,8 +569,8 @@ class SelectorSwitch(InputDevice):
 	"""
 	button = pi_control.device.SelectorSwitch(name, args)
 	"""
-	def __init__(self, name, args={}, debug_pref=False, log_level='notice'):
-		super().__init__(name, args, debug_pref)
+	def __init__(self, name, args={}, dry_run=False, log_level=None):
+		super().__init__(name, args, dry_run=dry_run, log_level)
 		self._type = 'button'
 		
 		# Properties
@@ -606,8 +626,8 @@ class OutputDevice(Device):
 	"""
 	device = pi_control.device.OutputDevice(name, args)
 	"""
-	def __init__(self, name, args={}, debug_pref=False, log_level='notice'):
-		super().__init__(name, args, debug_pref)
+	def __init__(self, name, args={}, dry_run=False, log_level=None):
+		super().__init__(name, args, dry_run=dry_run, log_level)
 		self._type = 'output'
 		self._threads = []
 		
@@ -669,8 +689,8 @@ class LED(OutputDevice):
 	"""
 	led = pi_control.device.LED(name, args)
 	"""
-	def __init__(self, name, args={}, debug_pref=False, log_level='notice'):
-		super().__init__(name, args, debug_pref)
+	def __init__(self, name, args={}, dry_run=False, log_level=None):
+		super().__init__(name, args, dry_run=dry_run, log_level)
 		self._type = 'led'
 		if 'gpio_pin' not in args:
 			raise AttributeError("GPIO pin required for {} {}".format(self.type, self.name))
@@ -690,10 +710,10 @@ class LED(OutputDevice):
 		on_actions = ['on', 'flicker_on']
 		off_actions = ['off', 'flicker_off']
 		
-		if self.last_status == 'on' and action in on_actions:
+		if self._last_status == 'on' and action in on_actions:
 			self.log(self.name + ' no change')
 			return False
-		if self.last_status == 'off' and action in off_actions:
+		if self._last_status == 'off' and action in off_actions:
 			self.log(self.name + ' no change')
 			return False
 		
@@ -735,7 +755,7 @@ class LED(OutputDevice):
 	"""
 	def on(self, value=1.0):
 		self._connection.value = value
-		self.last_status = 'on'
+		self._last_status = 'on'
 		return True
 	
 	"""
@@ -743,7 +763,7 @@ class LED(OutputDevice):
 	"""
 	def off(self):
 		self._connection.value = 0.0
-		self.last_status = 'off'
+		self._last_status = 'off'
 		return True
 	
 	"""
@@ -877,8 +897,8 @@ class Haptic(OutputDevice):
 	"""
 	haptic = pi_control.device.Haptic(name, args)
 	"""
-	def __init__(self, name, args={}, debug_pref=False, log_level='notice'):
-		super().__init__(name, args, debug_pref)
+	def __init__(self, name, args={}, dry_run=False, log_level=None):
+		super().__init__(name, args, dry_run=dry_run, log_level)
 		self._type = 'haptic'
 		if 'source_bus' not in args:
 			raise AttributeError("Source bus required for {} {}".format(self.type, self.name))
@@ -933,8 +953,8 @@ class HTTP(OutputDevice):
 	"""
 	http = pi_control.device.HTTP(name, args)
 	"""
-	def __init__(self, name, args={}, debug_pref=False, log_level='notice'):
-		super().__init__(name, args, debug_pref)
+	def __init__(self, name, args={}, dry_run=False, log_level=None):
+		super().__init__(name, args, dry_run=dry_run, log_level)
 		self._type = 'http'
 		self._method = 'get'
 		if 'method' in args:
@@ -1006,9 +1026,11 @@ class HTTP(OutputDevice):
 			post_string = ' -X POST -H "Content-Type: application/json" -d \'{}\''.format(data_string)
 		
 		cmd = 'curl -s{}{} {} &'.format(auth_string, post_string, url)
-		if self._debug:
+		if self._dry_run:
 			self.log("cmd: " + cmd)
-		os.system(cmd)
+		else:
+			self.log("cmd: " + cmd)
+			os.system(cmd)
 	
 
 class Message(OutputDevice):
@@ -1019,14 +1041,13 @@ class Message(OutputDevice):
 		super().__init__(name, args, debug_pref)
 		self._type = 'message'
 		
-		self._service = None
-		if 'service' not in args:
-			raise KeyError("service is required for {} {}".format(self.type, self.name))
-		if type(args['service']) is not str:
-			raise TypeError("service in output {} must be type str".format(self.name))
-		if args['service'] not in ['sns']:
-			raise ValueError("Invalid service in output {}".format(self.name))
-		self._service = args['service']
+		self._service = 'print'
+		if 'service' in args:
+			if type(args['service']) is not str:
+				raise TypeError("service in output {} must be type str".format(self.name))
+			if args['service'] not in ['print', 'sns']:
+				raise ValueError("Invalid service in output {}".format(self.name))
+			self._service = args['service']
 		
 		self._message = None
 		if 'message' in args:
@@ -1064,6 +1085,8 @@ class Message(OutputDevice):
 		if not message:
 			raise KeyError("message is required for {} action {}".format(self.type, self.name))
 		
+		if self._service == 'print':
+			print(message)
 		if self._service == 'sns':
 			response = self._sns.publish(
 				TopicArn = self._topic_arn,
@@ -1082,8 +1105,8 @@ class Sound(OutputDevice):
 	"""
 	sound = pi_control.device.Sound(name, args)
 	"""
-	def __init__(self, name, args={}, debug_pref=False, log_level='notice'):
-		super().__init__(name, args, debug_pref)
+	def __init__(self, name, args={}, dry_run=False, log_level=None):
+		super().__init__(name, args, dry_run=dry_run, log_level)
 		self._type = 'sound'
 		self._file = None
 		if 'file' in args:
@@ -1114,3 +1137,5 @@ class Sound(OutputDevice):
 			os.system('mpg123 -q -m /opt/control/sounds/{} &'.format(file))
 		elif re.search(r'\.wav', file):
 			os.system('aplay -q /opt/control/sounds/{} &'.format(file))
+
+
