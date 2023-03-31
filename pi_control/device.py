@@ -527,7 +527,6 @@ class RotaryEncoder(InputDevice):
 		self._type = 'rotary_encoder'
 		self._value_type = 'absolute'
 		self._total_segments = 16
-		self._last_value = 0
 		
 		# Properties
 		if 'gpio_pins' not in args:
@@ -712,12 +711,12 @@ class LED(OutputDevice):
 		self.log(action, 'info')
 		
 		# No change, skip
-		on_actions = ['on', 'flicker_on']
-		off_actions = ['off', 'flicker_off']
+		on_actions = ['on', 'flicker_on', 'fade_on']
+		off_actions = ['off', 'flicker_off', 'fade_off']
 		
-		if self._last_status == 'on' and action in on_actions:
-			self.log(self.name + ' no change')
-			return False
+# 		if self._last_status == 'on' and action in on_actions:
+# 			self.log(self.name + ' no change')
+# 			return False
 		if self._last_status == 'off' and action in off_actions:
 			self.log(self.name + ' no change')
 			return False
@@ -761,6 +760,7 @@ class LED(OutputDevice):
 	def on(self, value=1.0):
 		self._connection.value = value
 		self._last_status = 'on'
+		self._last_value = 100
 		return True
 	
 	"""
@@ -769,10 +769,13 @@ class LED(OutputDevice):
 	def off(self):
 		self._connection.value = 0.0
 		self._last_status = 'off'
+		self._last_value = 0
 		return True
 	
 	"""
 	led.blink(iterations, duration)
+		start off
+		end off
 	"""
 	def blink(self, iterations=3, duration=3, id=None, stop_function=lambda:True):
 		for i in range(iterations):
@@ -799,6 +802,8 @@ class LED(OutputDevice):
 	
 	"""
 	led.flicker_on(duration)
+		start off
+		end on
 	"""
 	def flicker_on(self, duration=.5, id=None, stop_function=lambda:True):
 		for i in range(8):
@@ -828,6 +833,8 @@ class LED(OutputDevice):
 	
 	"""
 	led.flicker_off(duration)
+		start on
+		end off
 	"""
 	def flicker_off(self, duration=.5, id=None, stop_function=lambda:True):
 		for i in range(8):
@@ -856,6 +863,8 @@ class LED(OutputDevice):
 	
 	"""
 	led.fade_on(duration)
+		start off
+		end on
 	"""
 	def fade_on(self, duration=.5, id=None, stop_function=lambda:True):
 		increment = 32
@@ -878,6 +887,8 @@ class LED(OutputDevice):
 	
 	"""
 	led.fade_off(duration)
+		start on
+		end off
 	"""
 	def fade_off(self, duration=.5, id=None, stop_function=lambda:True):
 		increment = 32
@@ -1036,6 +1047,9 @@ class HTTP(OutputDevice):
 		else:
 			self.log("cmd: " + cmd, 'info')
 			os.system(cmd)
+		
+		if 'value' in action_info:
+			self._last_status = action_info['value']
 	
 
 class Message(OutputDevice):
