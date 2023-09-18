@@ -33,8 +33,8 @@ def main():
 			"short": "vv",
 			"long": "more_verbose"
 		}, {
-			"short": "vvv",
-			"long": "very_verbose"
+			"short": "x",
+			"long": "extra_verbose"
 		} ]
 	})
 	
@@ -47,7 +47,7 @@ def main():
 		log_level = 5
 	elif opts['vv']:
 		log_level = 6
-	elif opts['vvv']:
+	elif opts['x']:
 		log_level = 7
 	
 	panel = pi_control.panel.Panel('monitor_panel', '/opt/control/control.yml', dry_run=dry_run, log_level=log_level)
